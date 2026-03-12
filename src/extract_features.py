@@ -48,27 +48,59 @@ def extract_file_features(file_path: Path) -> list[float]:
 	# Load fixed duration for consistent feature vectors across files.
 	y, sr = librosa.load(file_path, duration=30)
 
-	# 40 per-coefficient MFCC means + stds for richer timbral encoding.
+	# 40 per-coefficient MFCC means + stds — timbre texture.
 	mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
 	mfcc_means = np.mean(mfcc, axis=1).tolist()
 	mfcc_stds = np.std(mfcc, axis=1).tolist()
 
-	spectral_centroid = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
-	spectral_rolloff = float(np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr)))
-	zcr = float(np.mean(librosa.feature.zero_crossing_rate(y=y)))
+	# Spectral centroid — brightness.
+	sc = librosa.feature.spectral_centroid(y=y, sr=sr)
+	spectral_centroid_mean = float(np.mean(sc))
+	spectral_centroid_std = float(np.std(sc))
 
-	# 12 chroma means — captures pitch-class distribution.
+	# Spectral bandwidth — frequency spread around centroid.
+	sb = librosa.feature.spectral_bandwidth(y=y, sr=sr)
+	spectral_bandwidth_mean = float(np.mean(sb))
+	spectral_bandwidth_std = float(np.std(sb))
+
+	# Spectral rolloff.
+	sr_feat = librosa.feature.spectral_rolloff(y=y, sr=sr)
+	spectral_rolloff_mean = float(np.mean(sr_feat))
+	spectral_rolloff_std = float(np.std(sr_feat))
+
+	# Zero crossing rate — noisiness / percussiveness.
+	zcr = librosa.feature.zero_crossing_rate(y=y)
+	zcr_mean = float(np.mean(zcr))
+	zcr_std = float(np.std(zcr))
+
+	# RMS energy — loudness.
+	rms = librosa.feature.rms(y=y)
+	rms_mean = float(np.mean(rms))
+	rms_std = float(np.std(rms))
+
+	# 12 chroma means — pitch-class distribution.
 	chroma = librosa.feature.chroma_stft(y=y, sr=sr)
 	chroma_means = np.mean(chroma, axis=1).tolist()
 
-	# 7 spectral contrast bands — separates harmonic and percussive content.
+	# 7 spectral contrast bands — harmonic vs percussive separation.
 	contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
 	contrast_means = np.mean(contrast, axis=1).tolist()
 
+	# Tempo — rhythm / BPM.
 	tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
 	tempo_value = float(np.asarray(tempo).reshape(-1)[0])
 
-	return mfcc_means + mfcc_stds + [spectral_centroid, spectral_rolloff, zcr] + chroma_means + contrast_means + [tempo_value]
+	return (
+		mfcc_means + mfcc_stds
+		+ [spectral_centroid_mean, spectral_centroid_std]
+		+ [spectral_bandwidth_mean, spectral_bandwidth_std]
+		+ [spectral_rolloff_mean, spectral_rolloff_std]
+		+ [zcr_mean, zcr_std]
+		+ [rms_mean, rms_std]
+		+ chroma_means
+		+ contrast_means
+		+ [tempo_value]
+	)
 
 
 def main() -> None:
@@ -134,12 +166,18 @@ def main() -> None:
 			labels.append(genre)
 
 	mfcc_mean_cols = [f"mfcc_mean_{i+1}" for i in range(40)]
-	mfcc_std_cols = [f"mfcc_std_{i+1}" for i in range(40)]
-	chroma_cols = [f"chroma_{i+1}" for i in range(12)]
-	contrast_cols = [f"contrast_{i+1}" for i in range(7)]
-	columns = (mfcc_mean_cols + mfcc_std_cols
-			   + ["spectral_centroid", "spectral_rolloff", "zero_crossing_rate"]
-			   + chroma_cols + contrast_cols + ["tempo"])
+	mfcc_std_cols  = [f"mfcc_std_{i+1}"  for i in range(40)]
+	chroma_cols    = [f"chroma_{i+1}"    for i in range(12)]
+	contrast_cols  = [f"contrast_{i+1}"  for i in range(7)]
+	columns = (
+		mfcc_mean_cols + mfcc_std_cols
+		+ ["spectral_centroid_mean", "spectral_centroid_std"]
+		+ ["spectral_bandwidth_mean", "spectral_bandwidth_std"]
+		+ ["spectral_rolloff_mean", "spectral_rolloff_std"]
+		+ ["zcr_mean", "zcr_std"]
+		+ ["rms_mean", "rms_std"]
+		+ chroma_cols + contrast_cols + ["tempo"]
+	)
 
 	df = pd.DataFrame(features, columns=columns)
 	df["label"] = labels
