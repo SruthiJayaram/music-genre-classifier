@@ -51,54 +51,78 @@ def extract_file_features(file_path: Path) -> list[float]:
 	# 40 per-coefficient MFCC means + stds — timbre texture.
 	mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
 	mfcc_means = np.mean(mfcc, axis=1).tolist()
-	mfcc_stds = np.std(mfcc, axis=1).tolist()
+	mfcc_stds  = np.std(mfcc, axis=1).tolist()
+
+	# Delta MFCC means — temporal dynamics / rate of change of timbre.
+	delta_mfcc = librosa.feature.delta(mfcc)
+	delta_mfcc_means = np.mean(delta_mfcc, axis=1).tolist()
 
 	# Spectral centroid — brightness.
 	sc = librosa.feature.spectral_centroid(y=y, sr=sr)
 	spectral_centroid_mean = float(np.mean(sc))
-	spectral_centroid_std = float(np.std(sc))
+	spectral_centroid_std  = float(np.std(sc))
 
 	# Spectral bandwidth — frequency spread around centroid.
 	sb = librosa.feature.spectral_bandwidth(y=y, sr=sr)
 	spectral_bandwidth_mean = float(np.mean(sb))
-	spectral_bandwidth_std = float(np.std(sb))
+	spectral_bandwidth_std  = float(np.std(sb))
 
 	# Spectral rolloff.
 	sr_feat = librosa.feature.spectral_rolloff(y=y, sr=sr)
 	spectral_rolloff_mean = float(np.mean(sr_feat))
-	spectral_rolloff_std = float(np.std(sr_feat))
+	spectral_rolloff_std  = float(np.std(sr_feat))
+
+	# Spectral flatness — how noise-like vs tonal the signal is.
+	sf = librosa.feature.spectral_flatness(y=y)
+	spectral_flatness_mean = float(np.mean(sf))
+	spectral_flatness_std  = float(np.std(sf))
 
 	# Zero crossing rate — noisiness / percussiveness.
 	zcr = librosa.feature.zero_crossing_rate(y=y)
 	zcr_mean = float(np.mean(zcr))
-	zcr_std = float(np.std(zcr))
+	zcr_std  = float(np.std(zcr))
 
 	# RMS energy — loudness.
 	rms = librosa.feature.rms(y=y)
 	rms_mean = float(np.mean(rms))
-	rms_std = float(np.std(rms))
+	rms_std  = float(np.std(rms))
 
-	# 12 chroma means — pitch-class distribution.
+	# Chroma means + stds — pitch-class distribution and its variance.
 	chroma = librosa.feature.chroma_stft(y=y, sr=sr)
 	chroma_means = np.mean(chroma, axis=1).tolist()
+	chroma_stds  = np.std(chroma, axis=1).tolist()
 
-	# 7 spectral contrast bands — harmonic vs percussive separation.
+	# Spectral contrast bands — harmonic vs percussive separation.
 	contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
 	contrast_means = np.mean(contrast, axis=1).tolist()
+	contrast_stds  = np.std(contrast, axis=1).tolist()
+
+	# Tonnetz — tonal centroid features (harmony / chord structure).
+	tonnetz = librosa.feature.tonnetz(y=librosa.effects.harmonic(y), sr=sr)
+	tonnetz_means = np.mean(tonnetz, axis=1).tolist()
+	tonnetz_stds  = np.std(tonnetz, axis=1).tolist()
+
+	# Onset strength — rhythmic emphasis / beat salience.
+	onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+	onset_mean = float(np.mean(onset_env))
+	onset_std  = float(np.std(onset_env))
 
 	# Tempo — rhythm / BPM.
 	tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
 	tempo_value = float(np.asarray(tempo).reshape(-1)[0])
 
 	return (
-		mfcc_means + mfcc_stds
+		mfcc_means + mfcc_stds + delta_mfcc_means
 		+ [spectral_centroid_mean, spectral_centroid_std]
 		+ [spectral_bandwidth_mean, spectral_bandwidth_std]
 		+ [spectral_rolloff_mean, spectral_rolloff_std]
+		+ [spectral_flatness_mean, spectral_flatness_std]
 		+ [zcr_mean, zcr_std]
 		+ [rms_mean, rms_std]
-		+ chroma_means
-		+ contrast_means
+		+ chroma_means + chroma_stds
+		+ contrast_means + contrast_stds
+		+ tonnetz_means + tonnetz_stds
+		+ [onset_mean, onset_std]
 		+ [tempo_value]
 	)
 
@@ -165,18 +189,28 @@ def main() -> None:
 			features.append(row)
 			labels.append(genre)
 
-	mfcc_mean_cols = [f"mfcc_mean_{i+1}" for i in range(40)]
-	mfcc_std_cols  = [f"mfcc_std_{i+1}"  for i in range(40)]
-	chroma_cols    = [f"chroma_{i+1}"    for i in range(12)]
-	contrast_cols  = [f"contrast_{i+1}"  for i in range(7)]
+	mfcc_mean_cols     = [f"mfcc_mean_{i+1}"      for i in range(40)]
+	mfcc_std_cols      = [f"mfcc_std_{i+1}"       for i in range(40)]
+	delta_mfcc_cols    = [f"delta_mfcc_{i+1}"     for i in range(40)]
+	chroma_mean_cols   = [f"chroma_mean_{i+1}"    for i in range(12)]
+	chroma_std_cols    = [f"chroma_std_{i+1}"     for i in range(12)]
+	contrast_mean_cols = [f"contrast_mean_{i+1}"  for i in range(7)]
+	contrast_std_cols  = [f"contrast_std_{i+1}"   for i in range(7)]
+	tonnetz_mean_cols  = [f"tonnetz_mean_{i+1}"   for i in range(6)]
+	tonnetz_std_cols   = [f"tonnetz_std_{i+1}"    for i in range(6)]
 	columns = (
-		mfcc_mean_cols + mfcc_std_cols
+		mfcc_mean_cols + mfcc_std_cols + delta_mfcc_cols
 		+ ["spectral_centroid_mean", "spectral_centroid_std"]
 		+ ["spectral_bandwidth_mean", "spectral_bandwidth_std"]
 		+ ["spectral_rolloff_mean", "spectral_rolloff_std"]
+		+ ["spectral_flatness_mean", "spectral_flatness_std"]
 		+ ["zcr_mean", "zcr_std"]
 		+ ["rms_mean", "rms_std"]
-		+ chroma_cols + contrast_cols + ["tempo"]
+		+ chroma_mean_cols + chroma_std_cols
+		+ contrast_mean_cols + contrast_std_cols
+		+ tonnetz_mean_cols + tonnetz_std_cols
+		+ ["onset_mean", "onset_std"]
+		+ ["tempo"]
 	)
 
 	df = pd.DataFrame(features, columns=columns)

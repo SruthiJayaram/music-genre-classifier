@@ -1,0 +1,6 @@
+model,accuracy
+XGBoost,0.755
+SVM (RBF),0.75
+Gradient Boosting,0.73
+Random Forest,0.72
+KNN,0.695
